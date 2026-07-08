@@ -30,8 +30,8 @@ class WalletController(private val service: WalletService = WalletService()) {
 
 class WalletService {
     private val credentials = listOf(
-        WalletCredential("wallet-vc-1", "교육 수료 증명", "IDWallet Demo Issuer", "ACTIVE", LocalDate.parse("2027-12-31")),
-        WalletCredential("wallet-vc-2", "재직 증명", "IDWallet Demo Issuer", "ACTIVE", LocalDate.parse("2026-10-31")),
+        WalletCredential("wallet-vc-1", "교육 수료 증명", "IDWallet Demo Issuer", "hash_education_1001", "ACTIVE", LocalDate.parse("2027-12-31")),
+        WalletCredential("wallet-vc-2", "재직 증명", "IDWallet Demo Issuer", "hash_employment_1002", "ACTIVE", LocalDate.parse("2026-10-31")),
     )
     private val submissions = mutableMapOf<String, SubmissionRequest>()
 
@@ -52,7 +52,7 @@ class WalletService {
     }
 }
 
-data class WalletCredential(val id: String, val type: String, val issuerName: String, val status: String, val expiresAt: LocalDate)
+data class WalletCredential(val id: String, val type: String, val issuerName: String, val payloadHash: String, val status: String, val expiresAt: LocalDate)
 data class CreateSubmissionRequest(val requestedTypes: List<@NotBlank String>)
 data class SubmissionRequest(val id: String, val requestedTypes: List<String>, val status: String, val expiresAt: Instant)
 data class SubmissionResponseRequest(@field:NotBlank val credentialId: String)
