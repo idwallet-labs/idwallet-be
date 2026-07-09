@@ -10,8 +10,9 @@ class IdwalletBeApplicationTests {
 	@Test
 	fun approvesSubmissionRequest() {
 		val service = WalletService(InMemoryWalletStore())
+		val credential = service.receiveCredential(ReceiveCredentialRequest("교육 수료 증명", "BDGEN Academy Issuer"))
 		val submission = service.createSubmission(CreateSubmissionRequest(listOf("교육 수료 증명")))
-		val response = service.approve(submission.id, SubmissionResponseRequest("wallet-vc-1"))
+		val response = service.approve(submission.id, SubmissionResponseRequest(credential.id))
 
 		assertEquals("APPROVED", response.result)
 	}
@@ -19,10 +20,11 @@ class IdwalletBeApplicationTests {
 	@Test
 	fun rejectsCredentialTypeMismatch() {
 		val service = WalletService(InMemoryWalletStore())
+		val credential = service.receiveCredential(ReceiveCredentialRequest("교육 수료 증명", "BDGEN Academy Issuer"))
 		val submission = service.createSubmission(CreateSubmissionRequest(listOf("재직 증명")))
 
 		val error = assertFailsWith<IllegalArgumentException> {
-			service.approve(submission.id, SubmissionResponseRequest("wallet-vc-1"))
+			service.approve(submission.id, SubmissionResponseRequest(credential.id))
 		}
 
 		assertEquals("credential type does not match request", error.message)
@@ -31,11 +33,12 @@ class IdwalletBeApplicationTests {
 	@Test
 	fun rejectsDuplicateSubmissionResponse() {
 		val service = WalletService(InMemoryWalletStore())
+		val credential = service.receiveCredential(ReceiveCredentialRequest("교육 수료 증명", "BDGEN Academy Issuer"))
 		val submission = service.createSubmission(CreateSubmissionRequest(listOf("교육 수료 증명")))
 
-		service.approve(submission.id, SubmissionResponseRequest("wallet-vc-1"))
+		service.approve(submission.id, SubmissionResponseRequest(credential.id))
 		val error = assertFailsWith<IllegalArgumentException> {
-			service.approve(submission.id, SubmissionResponseRequest("wallet-vc-1"))
+			service.approve(submission.id, SubmissionResponseRequest(credential.id))
 		}
 
 		assertEquals("submission is already processed", error.message)
@@ -44,18 +47,20 @@ class IdwalletBeApplicationTests {
 	@Test
 	fun recordsAuditEvents() {
 		val service = WalletService(InMemoryWalletStore())
+		val credential = service.receiveCredential(ReceiveCredentialRequest("교육 수료 증명", "BDGEN Academy Issuer"))
 		val submission = service.createSubmission(CreateSubmissionRequest(listOf("교육 수료 증명")))
 
-		service.approve(submission.id, SubmissionResponseRequest("wallet-vc-1"))
+		service.approve(submission.id, SubmissionResponseRequest(credential.id))
 
-		assertEquals(listOf("SUBMISSION_REQUEST_CREATED", "SUBMISSION_APPROVED"), service.auditEvents().map { it.type })
+		assertEquals(listOf("CREDENTIAL_RECEIVED", "SUBMISSION_REQUEST_CREATED", "SUBMISSION_APPROVED"), service.auditEvents().map { it.type })
 	}
 
 	@Test
 	fun exposesOnlyPayloadHash() {
-		val credential = WalletService(InMemoryWalletStore()).credentials().first()
+		val service = WalletService(InMemoryWalletStore())
+		val credential = service.receiveCredential(ReceiveCredentialRequest("교육 수료 증명", "BDGEN Academy Issuer"))
 
-		assertEquals("hash_education_1001", credential.payloadHash)
+		assertEquals(true, credential.payloadHash.startsWith("hash-"))
 		assertFalse(credential.payloadHash.contains("홍길동"))
 	}
 

@@ -30,6 +30,9 @@ class WalletController(private val service: WalletService) {
     @GetMapping("/wallet/credentials")
     fun credentials(): List<WalletCredential> = service.credentials()
 
+    @PostMapping("/wallet/credentials")
+    fun receiveCredential(@RequestBody request: ReceiveCredentialRequest): WalletCredential = service.receiveCredential(request)
+
     @PostMapping("/submission-requests")
     fun createSubmission(@RequestBody request: CreateSubmissionRequest): SubmissionRequest = service.createSubmission(request)
 
@@ -51,6 +54,20 @@ class ApiExceptionHandler {
 class WalletService(private val store: WalletStore) {
     fun credentials(): List<WalletCredential> = store.credentials()
     fun auditEvents(): List<AuditEvent> = store.auditEvents()
+
+    fun receiveCredential(request: ReceiveCredentialRequest): WalletCredential {
+        val credential = WalletCredential(
+            "wallet-vc-${UUID.randomUUID()}",
+            request.type,
+            request.issuerName,
+            "hash-${UUID.randomUUID()}",
+            "ACTIVE",
+            LocalDate.now().plusYears(1),
+        )
+        store.saveCredential(credential)
+        audit("CREDENTIAL_RECEIVED", credential.id, "issuerName=${credential.issuerName};type=${credential.type}")
+        return credential
+    }
 
     fun createSubmission(request: CreateSubmissionRequest): SubmissionRequest {
         val submission = SubmissionRequest("sub-${UUID.randomUUID()}", request.requestedTypes, "PENDING", Instant.now().plusSeconds(600))
@@ -91,6 +108,7 @@ class WalletService(private val store: WalletStore) {
 interface WalletStore {
     fun credentials(): List<WalletCredential>
     fun findCredential(id: String): WalletCredential?
+    fun saveCredential(credential: WalletCredential)
     fun saveSubmission(submission: SubmissionRequest)
     fun findSubmission(id: String): SubmissionRequest?
     fun updateSubmission(submission: SubmissionRequest)
@@ -114,6 +132,24 @@ class JdbcWalletStore(private val jdbcTemplate: JdbcTemplate) : WalletStore {
             "select id, type, issuer_name, payload_hash, status, expires_at from credential where id = ?",
             { rs, _ -> credential(rs) },
             id,
+        )
+    }
+
+    override fun saveCredential(credential: WalletCredential) {
+        jdbcTemplate.update(
+            "insert into wallet (id, user_hash) values ('wallet-primary', 'local_user') on conflict (id) do nothing",
+        )
+        jdbcTemplate.update(
+            """
+            insert into credential (id, wallet_id, type, issuer_name, payload_hash, status, expires_at)
+            values (?, 'wallet-primary', ?, ?, ?, ?, ?)
+            """.trimIndent(),
+            credential.id,
+            credential.type,
+            credential.issuerName,
+            credential.payloadHash,
+            credential.status,
+            credential.expiresAt,
         )
     }
 
@@ -205,16 +241,16 @@ class JdbcWalletStore(private val jdbcTemplate: JdbcTemplate) : WalletStore {
 }
 
 class InMemoryWalletStore : WalletStore {
-    private val credentials = listOf(
-        WalletCredential("wallet-vc-1", "교육 수료 증명", "IDWallet Demo Issuer", "hash_education_1001", "ACTIVE", LocalDate.parse("2027-12-31")),
-        WalletCredential("wallet-vc-2", "재직 증명", "IDWallet Demo Issuer", "hash_employment_1002", "ACTIVE", LocalDate.parse("2026-10-31")),
-    )
+    private val credentials = mutableListOf<WalletCredential>()
     private val submissions = mutableMapOf<String, SubmissionRequest>()
     private val responses = mutableMapOf<String, SubmissionResponse>()
     private val auditEvents = mutableListOf<AuditEvent>()
 
     override fun credentials(): List<WalletCredential> = credentials
     override fun findCredential(id: String): WalletCredential? = credentials.firstOrNull { it.id == id }
+    override fun saveCredential(credential: WalletCredential) {
+        credentials.add(credential)
+    }
     override fun saveSubmission(submission: SubmissionRequest) {
         submissions[submission.id] = submission
     }
@@ -233,6 +269,7 @@ class InMemoryWalletStore : WalletStore {
 }
 
 data class WalletCredential(val id: String, val type: String, val issuerName: String, val payloadHash: String, val status: String, val expiresAt: LocalDate)
+data class ReceiveCredentialRequest(@field:NotBlank val type: String, @field:NotBlank val issuerName: String)
 data class CreateSubmissionRequest(val requestedTypes: List<@NotBlank String>)
 data class SubmissionRequest(val id: String, val requestedTypes: List<String>, val status: String, val expiresAt: Instant)
 data class SubmissionResponseRequest(@field:NotBlank val credentialId: String)
